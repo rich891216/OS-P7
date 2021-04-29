@@ -17,17 +17,17 @@
 
 pthread_cond_t empty, full;
 pthread_mutex_t mutex;
-int count;
-int tail;
+int count = 0;
+int head = 0;
+int tail = 0;
 slot_t *shm_slot_ptr;
 
 int *buffer;
 char *shm_name;
 int buffer_size;
 int num_threads;
-int pagesize;
 
-void getargs(int *port, int *num_threads, int *buffer, char **shm_name, int argc, char *argv[])
+void getargs(int *port, int *threads, int *buffers, char **shm_name, int argc, char *argv[])
 {
 	if (argc != 5)
 	{
@@ -35,30 +35,9 @@ void getargs(int *port, int *num_threads, int *buffer, char **shm_name, int argc
 		exit(1);
 	}
 	*port = atoi(argv[1]);
-	*num_threads = atoi(argv[2]);
-	*buffer = atoi(argv[3]);
+	*threads = atoi(argv[2]);
+	*buffers = atoi(argv[3]);
 	*shm_name = (char *) argv[4];
-
-	// do we check port?
-	if (*num_threads <= 0)
-	{
-		fprintf(stderr, "Number of threads is not a positive integer\n");
-		exit(1);
-	}
-	if (buffer_size <= 0)
-	{
-		fprintf(stderr, "Buffers is not a positive integer\n");
-		exit(1);
-	}
-}
-
-void shift(int *buffer)
-{
-	for (int i = 1; i < buffer_size; i++)
-	{
-		buffer[i - 1] = i;
-	}
-	buffer[buffer_size - 1] = -1;
 }
 
 void *worker(void *arg)
@@ -72,9 +51,11 @@ void *worker(void *arg)
 		{
 			pthread_cond_wait(&empty, &mutex);
 		}
-		int connfd = buffer[0];
 		count--;
-		shift(buffer);
+		
+		int connfd = buffer[head];
+		head = (head + 1) % buffer_size;
+
 		pthread_cond_signal(&full);
 		pthread_mutex_unlock(&mutex);
 		int request_type = requestHandle(connfd);
@@ -89,6 +70,7 @@ void *worker(void *arg)
 
 		if (index == -1) {
 			index = num_threads;
+			num_threads++;
 			shm_slot_ptr[index].id = pthread_self();
 		}
 		
@@ -111,14 +93,14 @@ void add_to_buffer(int fd)
 {
 	// input will be connfd
 	pthread_mutex_lock(&mutex);
-	while (count >= buffer_size)
+	while (count == buffer_size)
 	{
 		pthread_cond_wait(&full, &mutex);
 	}
 
 	buffer[tail] = fd;
 	count++;
-	tail++;
+	tail = (tail + 1) % buffer_size;
 
 	// not empty anymore
 	pthread_cond_signal(&empty);
@@ -126,14 +108,12 @@ void add_to_buffer(int fd)
 }
 
 void int_handler () {
-	int ret1 = munmap(NULL, pagesize);
-	if (ret1 != 0) {
-		perror("munmap failed.\n");
-		exit(1);
-	}
+	// if (munmap(shm_slot_ptr, pagesize) != 0) {
+	// 	perror("munmap failed.\n");
+	// 	exit(1);
+	// }
 
-	int ret2 = shm_unlink(shm_name);
-	if (ret2 != 0) {
+	if (shm_unlink(shm_name) != 0) {
 		perror("shm_unlink failed.\n");
 		exit(1);
 	}
@@ -145,9 +125,21 @@ int main(int argc, char *argv[])
 	int listenfd, connfd, port, threads, buffers, clientlen;
 
 	struct sockaddr_in clientaddr;
-	pagesize = getpagesize();
+	int pagesize = getpagesize();
 
 	getargs(&port, &threads, &buffers, &shm_name, argc, argv);
+
+	if (buffers < 0 || buffers > MAXBUF) {
+    	exit(1);
+	}
+
+  	if (threads < 0) {
+    	exit(1);
+	}
+
+  	if (port < 0){
+    	exit(1);
+	}
 
 	//
 	// CS537 (Part B): Create & initialize the shared memory region...
@@ -159,10 +151,8 @@ int main(int argc, char *argv[])
 		perror("shm_open failed.\n");
 		exit(1);
 	}
-
-	int ret = ftruncate(shm_fd, pagesize);
     
-	if (ret != 0) {
+	if (ftruncate(shm_fd, pagesize) != 0) {
     	exit(1);
   	}
 
