@@ -206,4 +206,6 @@ int main(int argc, char *argv[])
 		// requestHandle(connfd);
 		// Close(connfd);
 	}
+	signal(SIGINT, int_handler);
+	return 0;
 }

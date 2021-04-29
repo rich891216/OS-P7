@@ -57,7 +57,7 @@ int main (int argc, char *argv[]) {
 		exit(1);
 	}
 
-	signal(SIGINT, int_handler);
+	
 
 	int count = 1;
 	while (1) {
@@ -70,5 +70,6 @@ int main (int argc, char *argv[]) {
 		}
 		count++;
 	}
+	signal(SIGINT, int_handler);
 	return 0;
 }
