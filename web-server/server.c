@@ -25,6 +25,7 @@ int *buffer;
 char *shm_name;
 int buffer_size;
 int num_threads;
+int pagesize;
 
 void getargs(int *port, int *num_threads, int *buffer, char **shm_name, int argc, char *argv[])
 {
@@ -125,8 +126,14 @@ void add_to_buffer(int fd)
 }
 
 void int_handler () {
-	int ret = shm_unlink(shm_name);
-	if (ret != 0) {
+	int ret1 = munmap(NULL, pagesize);
+	if (ret1 != 0) {
+		perror("munmap failed.\n");
+		exit(1);
+	}
+
+	int ret2 = shm_unlink(shm_name);
+	if (ret2 != 0) {
 		perror("shm_unlink failed.\n");
 		exit(1);
 	}
@@ -138,7 +145,7 @@ int main(int argc, char *argv[])
 	int listenfd, connfd, port, threads, buffers, clientlen;
 
 	struct sockaddr_in clientaddr;
-	int pagesize = getpagesize();
+	pagesize = getpagesize();
 
 	getargs(&port, &threads, &buffers, &shm_name, argc, argv);
 
@@ -152,6 +159,22 @@ int main(int argc, char *argv[])
 		perror("shm_open failed.\n");
 		exit(1);
 	}
+
+	int ret = ftruncate(shm_fd, pagesize);
+    
+	if (ret != 0) {
+    	exit(1);
+  	}
+
+	shm_slot_ptr = mmap(NULL, pagesize, PROT_READ | PROT_WRITE,
+				   MAP_SHARED, shm_fd, 0);
+	
+	if (shm_slot_ptr == MAP_FAILED) {
+		perror("mmap failure.\n");
+		exit(1);
+	}
+
+	signal(SIGINT, int_handler);
 
 	//
 	// CS537 (Part A): Create some threads...
@@ -178,14 +201,6 @@ int main(int argc, char *argv[])
 		pthread_create(&thread_pool[i], NULL, worker, &work_buf);
 	}
 
-	shm_slot_ptr = mmap(NULL, pagesize, PROT_READ | PROT_WRITE,
-				   MAP_SHARED, shm_fd, 0);
-	if (shm_slot_ptr == MAP_FAILED) {
-		perror("mmap failure.\n");
-		exit(1);
-	}
-
-	signal(SIGINT, int_handler);
 	listenfd = Open_listenfd(port);
 	while (1)
 	{
