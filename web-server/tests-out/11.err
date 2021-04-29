@@ -1,1 +1,0 @@
-tests/11.sh: line 46: 1784217 Bus error               timeout 1s ./stat_process "$TEST_SHM_NAME" 1 1 > /dev/null 2>&1

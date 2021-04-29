@@ -108,10 +108,10 @@ void add_to_buffer(int fd)
 }
 
 void int_handler () {
-	// if (munmap(shm_slot_ptr, pagesize) != 0) {
-	// 	perror("munmap failed.\n");
-	// 	exit(1);
-	// }
+	if (munmap(shm_slot_ptr, getpagesize()) != 0) {
+		perror("munmap failed.\n");
+		exit(1);
+	}
 
 	if (shm_unlink(shm_name) != 0) {
 		perror("shm_unlink failed.\n");
