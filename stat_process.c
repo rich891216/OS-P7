@@ -8,6 +8,7 @@ int shm_fd;
 char *shm_name;
 slot_t *shm_slot_ptr;
 
+// Grab the arguments for the process
 void getargs(char **shm_name, long *sleeptime_ms, int *num_threads, int argc, char *argv[])
 {
 	if (argc != 4)
@@ -20,22 +21,6 @@ void getargs(char **shm_name, long *sleeptime_ms, int *num_threads, int argc, ch
 	*num_threads = atoi(argv[3]);
 }
 
-void int_handler()
-{
-	if (munmap(shm_slot_ptr, pagesize) != 0)
-	{
-		perror("munmap failed.\n");
-		exit(1);
-	}
-
-	if (shm_unlink(shm_name) != 0)
-	{
-		perror("shm_unlink failed.\n");
-		exit(1);
-	}
-	exit(0);
-}
-
 int main(int argc, char *argv[])
 {
 	long sleeptime_ms;
@@ -44,6 +29,7 @@ int main(int argc, char *argv[])
 
 	getargs(&shm_name, &sleeptime_ms, &num_threads, argc, argv);
 
+	// ensure proper inputs
 	if (sleeptime_ms < 0 || num_threads < 0)
 	{
 		exit(1);
@@ -64,10 +50,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	signal(SIGINT, int_handler);
 	int count = 1;
+	// cycle of print and sleep
 	while (1)
 	{
+		// usleep sleeps for microseconds, so we multiply to get milliseconds
 		usleep(sleeptime_ms * 1000);
 
 		for (int i = 0; i < num_threads; i++)

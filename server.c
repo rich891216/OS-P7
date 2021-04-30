@@ -42,7 +42,7 @@ void getargs(int *port, int *threads, int *buffers, char **shm_name, int argc, c
 
 void *consumer(void *arg)
 {
-	// printf("Worker thread %d starts\n", (uintptr_t)arg);
+	// while work needs to be done
 	while (1)
 	{
 		pthread_mutex_lock(&mutex);
@@ -58,6 +58,8 @@ void *consumer(void *arg)
 
 		pthread_cond_signal(&full);
 		pthread_mutex_unlock(&mutex);
+
+		// track request count and type
 		int request_type = requestHandle(connfd);
 		int index = -1;
 
@@ -112,7 +114,8 @@ void producer(int fd)
 	pthread_mutex_unlock(&mutex);
 }
 
-void int_handler()
+// interrupt signal handler
+void SIGINT_handler()
 {
 	if (munmap(shm_slot_ptr, getpagesize()) != 0)
 	{
@@ -136,6 +139,11 @@ int main(int argc, char *argv[])
 	int pagesize = getpagesize();
 
 	getargs(&port, &threads, &buffers, &shm_name, argc, argv);
+
+	if (buffers < 0 || buffers > MAXBUF || threads < 0 || port < 2000 || port > 65535)
+	{
+		exit(1);
+	}
 
 	//
 	// CS537 (Part B): Create & initialize the shared memory region...
@@ -162,8 +170,6 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	signal(SIGINT, int_handler);
-
 	//
 	// CS537 (Part A): Create some threads...
 	//
@@ -181,16 +187,12 @@ int main(int argc, char *argv[])
 	pthread_cond_init(&full, NULL);
 	pthread_cond_init(&empty, NULL);
 
-	if (buffers < 0 || buffers > MAXBUF || threads < 0 || port < 2000 || port > 65535)
-	{
-		exit(1);
-	}
-	
 	for (int i = 0; i < threads; ++i)
 	{
 		pthread_create(&thread_pool[i], NULL, consumer, &buf);
 	}
 
+	signal(SIGINT, SIGINT_handler);
 	listenfd = Open_listenfd(port);
 	while (1)
 	{
@@ -206,4 +208,5 @@ int main(int argc, char *argv[])
 		// requestHandle(connfd);
 		// Close(connfd);
 	}
+	return 0;
 }
