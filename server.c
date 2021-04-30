@@ -37,10 +37,10 @@ void getargs(int *port, int *threads, int *buffers, char **shm_name, int argc, c
 	*port = atoi(argv[1]);
 	*threads = atoi(argv[2]);
 	*buffers = atoi(argv[3]);
-	*shm_name = (char *) argv[4];
+	*shm_name = (char *)argv[4];
 }
 
-void *worker(void *arg)
+void *consumer(void *arg)
 {
 	// printf("Worker thread %d starts\n", (uintptr_t)arg);
 	while (1)
@@ -52,7 +52,7 @@ void *worker(void *arg)
 			pthread_cond_wait(&empty, &mutex);
 		}
 		count--;
-		
+
 		int connfd = buffer[head];
 		head = (head + 1) % buffer_size;
 
@@ -61,39 +61,44 @@ void *worker(void *arg)
 		int request_type = requestHandle(connfd);
 		int index = -1;
 
-		for (int i = 0; i < num_threads; i++) {
-			if (shm_slot_ptr[i].id == pthread_self()) {
+		for (int i = 0; i < num_threads; i++)
+		{
+			if (shm_slot_ptr[i].id == pthread_self())
+			{
 				index = i;
 				break;
 			}
 		}
 
-		if (index == -1) {
+		if (index == -1)
+		{
 			index = num_threads;
 			num_threads++;
 			shm_slot_ptr[index].id = pthread_self();
 		}
-		
+
 		shm_slot_ptr[index].requests++;
 
-		if (request_type == 0) {
+		if (request_type == 0)
+		{
 			shm_slot_ptr[index].s_req++;
 		}
 
-		if (request_type == 1) {
+		if (request_type == 1)
+		{
 			shm_slot_ptr[index].d_req++;
 		}
-		
+
 		Close(connfd);
 	}
 	return 0;
 }
 
-void add_to_buffer(int fd)
+void producer(int fd)
 {
 	// input will be connfd
 	pthread_mutex_lock(&mutex);
-	while (count == buffer_size)
+	while (count >= buffer_size)
 	{
 		pthread_cond_wait(&full, &mutex);
 	}
@@ -107,13 +112,16 @@ void add_to_buffer(int fd)
 	pthread_mutex_unlock(&mutex);
 }
 
-void int_handler () {
-	if (munmap(shm_slot_ptr, getpagesize()) != 0) {
+void int_handler()
+{
+	if (munmap(shm_slot_ptr, getpagesize()) != 0)
+	{
 		perror("munmap failed.\n");
 		exit(1);
 	}
 
-	if (shm_unlink(shm_name) != 0) {
+	if (shm_unlink(shm_name) != 0)
+	{
 		perror("shm_unlink failed.\n");
 		exit(1);
 	}
@@ -129,18 +137,6 @@ int main(int argc, char *argv[])
 
 	getargs(&port, &threads, &buffers, &shm_name, argc, argv);
 
-	if (buffers < 0 || buffers > MAXBUF) {
-    	exit(1);
-	}
-
-  	if (threads < 0) {
-    	exit(1);
-	}
-
-  	if (port < 0){
-    	exit(1);
-	}
-
 	//
 	// CS537 (Part B): Create & initialize the shared memory region...
 	//
@@ -151,15 +147,17 @@ int main(int argc, char *argv[])
 		perror("shm_open failed.\n");
 		exit(1);
 	}
-    
-	if (ftruncate(shm_fd, pagesize) != 0) {
-    	exit(1);
-  	}
+
+	if (ftruncate(shm_fd, pagesize) != 0)
+	{
+		exit(1);
+	}
 
 	shm_slot_ptr = mmap(NULL, pagesize, PROT_READ | PROT_WRITE,
-				   MAP_SHARED, shm_fd, 0);
-	
-	if (shm_slot_ptr == MAP_FAILED) {
+						MAP_SHARED, shm_fd, 0);
+
+	if (shm_slot_ptr == MAP_FAILED)
+	{
 		perror("mmap failure.\n");
 		exit(1);
 	}
@@ -174,21 +172,23 @@ int main(int argc, char *argv[])
 	// pool of consumer threads
 
 	buffer_size = buffers;
-	int work_buf[buffer_size];
-	buffer = work_buf;
-	pthread_t thread_pool[threads];
-	num_threads = threads;
 
-	count = 0;
-	tail = 0;
+	int buf[buffer_size];
+	buffer = buf;
+	pthread_t thread_pool[threads];
 
 	pthread_mutex_init(&mutex, NULL);
-	pthread_cond_init(&empty, NULL);
 	pthread_cond_init(&full, NULL);
+	pthread_cond_init(&empty, NULL);
 
-	for (int i = 0; i < threads; i++)
+	if (buffers < 0 || buffers > MAXBUF || threads < 0 || port < 2000 || port > 65535)
 	{
-		pthread_create(&thread_pool[i], NULL, worker, &work_buf);
+		exit(1);
+	}
+	
+	for (int i = 0; i < threads; ++i)
+	{
+		pthread_create(&thread_pool[i], NULL, consumer, &buf);
 	}
 
 	listenfd = Open_listenfd(port);
@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
 	{
 		clientlen = sizeof(clientaddr);
 		connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *)&clientlen);
-		add_to_buffer(connfd);
+		producer(connfd);
 
 		//
 		// CS537 (Part A): In general, don't handle the request in the main thread.
@@ -206,6 +206,4 @@ int main(int argc, char *argv[])
 		// requestHandle(connfd);
 		// Close(connfd);
 	}
-	signal(SIGINT, int_handler);
-	return 0;
 }

@@ -1,2 +1,0 @@
-bash tests/stat_test.sh 8       12      20      1     "/home.html" "/favicon.ico"
-#                       threads buffers clients loops requests
